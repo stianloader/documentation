@@ -1,0 +1,142 @@
+= Mixin configuration reference
+Geolykt
+:jbake-type: post
+:jbake-status: published
+:jbake-tags: asciidoc
+:idprefix:
+
+:toc:
+
+CAUTION: This feature is supported in the spongeian mixin implementation (and
+it's direct descendants), but is not present in micromixin-transformer. It may
+be implemented at a later point in time.
+
+WARNING: The Micromixin ecosystem does not support refmaps. This feature is as
+such not supported within Stianloader. Use ahead-of-time or just-in-time
+remapping using stianloader-remapper or micromixin-remapper instead.
+
+== Abstract
+
+The mixin configuration file is a JSON-encoded file storing metadata about
+how your mixin classes should be loaded and applies. This means it defines
+the location of the mixin classes as well as defining the default number of
+minimum injectors, the default priority, the minimum required mixin version
+among others.
+
+== Configuration file naming & resolution
+
+The recommended name for these mixin files is '<modid>.mixins.json', so for a
+mod with the id of 'examplemod', the file should be named
+'examplemod.mixins.json'. The reason the modid should be contained in the
+name of a mixin file is that the spongeian mixin implementation and it's
+direct forks lack the ability to attach a classloader to the mixin config
+name. This means that on these mixin implementations, the mixin service
+implementor is only requested to load a resource under a certain name, but will
+not necessarily know where to look up the resource. While a few workarounds
+exist, it should be assumed that the mixin service will look for a resource
+with the provided name under all mods and will return the first match. So if
+two mods define mixin configurations with different names, the wrong mixin
+configuration resource could be fetched for either or even both mods.
+
+NOTE: How the configuration resource is resolved is up to the modloader
+environment. It is equally possible for the resource to be purely virtual,
+that is it is created at runtime. However, creating the resource at runtime
+is a bit of an opaque and cumbersome solution and should be avoided where it can
+be helped.
+
+Under SLL version 4 and below, the path to the mixin configuration can be
+defined with the `mixinConfig` attribute in the extension.json file. This
+attribute is optional, and may only referr to a single mixin configuration.
+SLL expects a resource with the given name to be present within the plugin's
+classpath. In the launcher-sponge variants, caution should be excerted as the
+classpath being used to look up the resource is provided by the
+MinestomRootClassLoader, meaning that game resources and resources from other
+mods may also be relevant in this process. Under launcher-micromixin, the
+resource lookup is isolated to only the mod resources.
+
+.An SLL 4 extension.json file defining a mixin configuration.
+[example]
+====
+```json
+{
+  "entrypoint": "de.geolykt.surface.AuthenticSurface",
+  "name": "AuthenticSurface",
+  "version": "${version}",
+  "mixinConfig": "surface-mixins.json",
+  "dependencies": [ ]
+}
+```
+====
+
+=== Declaring the configuration file under micromixin-transformer
+
+TIP: Speaking to the mixin subsystem is a task reserved to the modloader.
+This includes the process of registering mixin configurations. Mods and plugins
+should never have a reason to explicitly define a mixin configuration from code.
+
+Defining configurations under micromixin-transformer is relatively trivial.
+To start off, a `MixinConfig` object needs to be obtained, for this either the
+link:++https://stianloader.org/jd/org.stianloader/micromixin-transformer/[0.6.0,0.7.0-a0)/org/stianloader/micromixin/transform/api/MixinConfig.html#fromJson(org.json.JSONObject)++[fromJson]
+or the
+link:++https://stianloader.org/jd/org.stianloader/micromixin-transformer/[0.6.0,0.7.0-a0)/org/stianloader/micromixin/transform/api/MixinConfig.html#fromString(java.lang.String)++[fromString]
+methods can be used. The String or JSONObject argument contains the contents of
+the mixin configuration resource as-is, making it the responsibility of the
+caller to define the location of the configuration, look the resource up, and to
+then read it (and optionally convert it to a JSONObject, although the fromString
+method already does it for the caller). This contrasts the spongeian mixin
+implementation where a path is passed to the mixin subsystem. After having
+obtained the MixinConfig instance, the mixin configuration needs to be
+registered to the transformer using the
+link:++https://stianloader.org/jd/org.stianloader/micromixin-transformer/[0.6.0,0.7.0-a0)/org/stianloader/micromixin/transform/api/MixinTransformer.html#addMixin(M,org.stianloader.micromixin.transform.api.MixinConfig)++[addMixin]
+method. The modularity attachment argument depends on which type the environment
+choose for modularity attachments. For the two most common cases, that is `Void`
+and `ClassLoader`, it'd be `null` or the classloader of the mod respectively.
+
+.SLL 4 (launcher-micromixin variant) mixin configuration registration code.
+[example]
+====
+```java
+JSONObject mixinConfigJson;
+try (InputStream is = extension.loader.getResourceAsStreamWithChildren(mixinConfigFile)) {
+    if (is == null) {
+        throw new IOException("HierarchyClassLoader.getResourceAsStreamWithChildren(mixinConfigFile) yielded null.");
+    }
+    mixinConfigJson = new JSONObject(new String(JavaInterop.readAllBytes(is), StandardCharsets.UTF_8));
+} catch (IOException e) {
+    throw new IOException("Cannot find mixin config " + mixinConfigFile + " in extension " + extension.getName(), e);
+}
+MixinConfig mixinConfig = MixinConfig.fromJson(mixinConfigJson);
+((ASMMixinTransformer) transformer).transformer.addMixin(extension.loader, mixinConfig);
+```
+====
+
+=== Declaring the configuration file under sponge's mixin implementation
+
+====
+CAUTION: Caution should be excerted when interpreting this section. The authors
+of this section do not claim complete knowledge of mixin and its internals,
+meaning that this section may represent biased, incorrect, or otherwise
+misleading insights.
+====
+
+Defining a mixin configuration under sponge can be done in a few steps, but is
+less flexible compared to micromixin-transformer unless tricks are employed.
+The configurations are registered via the aptly named `addConfiguration` method
+located in the Mixins class, where as the input argument is a string
+defining the path of the mixin configuration file. This file is then read by the
+registered mixin service, more specifically the `getResourceAsStream` method
+of the `IMixinService` interface, which must be implemented accordingly to
+return the contents of the mixin configuration resource.
+
+.SLL 4 (launcher-sponge variant) mixin configuration registration code.
+[example]
+====
+```java
+if (!extension.getMixinConfig().isEmpty()) {
+    final String mixinConfigFile = extension.getMixinConfig();
+    Mixins.addConfiguration(mixinConfigFile);
+    LOGGER.info("Found mixin in extension {}: {}", extension.getName(), mixinConfigFile);
+}
+```
+====
+

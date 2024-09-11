@@ -1,0 +1,10 @@
+= Documentation not yet implemented
+Geolykt
+:jbake-type: post
+:jbake-status: published
+:jbake-tags: asciidoc
+:idprefix:
+
+Unfortunately the documentation you are trying to reach hasn't been written yet.
+It might get written at a later point in time, but if 'later' doesn't come
+early enough, nag Geolykt who is responsible for the documentation about this.
